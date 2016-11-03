@@ -14,7 +14,7 @@ import (
     "net/textproto"
     //"bytes"
     "bufio"
-    
+    "errors"
 )
 
 var fileHash map[string]string
@@ -40,12 +40,6 @@ func listfunc(path string, f os.FileInfo, err error) error{
     var strRet string
     //strRet = path
     
-    ostype := os.Getenv("GOOS")
-    if ostype == "windows" {
-        strRet += "\\"
-    } else if ostype == "linux" {
-        strRet += "/"
-    }
     
     if f == nil{
         return err
@@ -93,10 +87,10 @@ func recursionDirectory(dir string){
 }
 
 func processUpload(){
-    files := make([]string, len(fileUpload), 1000)
+    files := make([]string, len(fileUpload), 100000)
     for key, _ := range fileUpload{
         // 处理upload文件
-        fmt.Println("fileUpload :", key)
+        fmt.Println("[", time.Now().Truncate(time.Second).String(), "] ", key)
         files = append(files, key)
     }
     if len(files) != 0 {
@@ -129,7 +123,7 @@ func upload(files []string) error{
 	    fmt.Println("changedir:", cf.ConfigMap["ftp.directory"])
 		return err
 	}
-	fmt.Println("files len:", len(files))
+	//fmt.Println("files len:", len(files))
     for _,filePath := range files {
         if filePath != "" {
             uploadFilePeer(c, filePath)
@@ -153,9 +147,26 @@ func upload(files []string) error{
 	return nil
 }
 
-//分析要上传的文件
+/*
+分析要上传的单个文件
+path 相对路径
+*/
 func uploadFilePeer(conn *ftp.ServerConn,path string) error{
+    //切换至配置指定的路径
+    err := conn.ChangeDir(cf.ConfigMap["ftp.directory"])
+    if err != nil {
+        fmt.Println("changedir:", cf.ConfigMap["ftp.directory"])
+        return err
+    }
     
+    //拆分前面无效串
+    index := strings.Index(path, cf.ConfigMap["check.directory"])
+    shortFileName := ""
+    if index != -1 {
+        shortFileName = strings.Replace(path, cf.ConfigMap["check.directory"], "", -1)
+    }
+    
+    switchDir(conn, cf.ConfigMap["ftp.directory"], shortFileName)
     
     //上传文件
     file,err := os.Open(path)
@@ -165,17 +176,54 @@ func uploadFilePeer(conn *ftp.ServerConn,path string) error{
     }
     data := bufio.NewReader(file)
     //data := bytes.NewBufferString(testData)
-    //拆分前面无效串
-    index := strings.Index(path, cf.ConfigMap["check.directory"])
-    shortFileName := ""
-    if index != -1 {
-        shortFileName = strings.Replace(path, cf.ConfigMap["check.directory"], "", -1)
-    }
-    fmt.Println("shortFileName:", shortFileName)
-	err = conn.Stor(shortFileName, data)
+    
+    // 取文件名称
+    shortName := strings.Split(shortFileName, "\\")
+    //fmt.Println("shortFileName:", shortName[len(shortName)-1])
+	err = conn.Stor(shortName[len(shortName)-1], data)
 	if err != nil {
 		return err
 	}
 	
 	return nil
+}
+
+/*
+检查是否有此目录、创建目录、切换目录
+*/
+func switchDir(conn *ftp.ServerConn,before, after string) error {
+    splitChar := "\\"
+    
+    if strings.Index(after, splitChar) == -1{
+        //panic(errors.New("switch to dir failed!"))
+        //fmt.Println("switchDir() not found ", splitChar)
+        return nil
+    }
+    afterStr := strings.Split(after, splitChar)
+    
+    before1 := before
+    if !strings.HasSuffix(before, splitChar) {
+        before1 += "/"
+    }
+    before1 += afterStr[0]
+    err := conn.ChangeDir(before1)
+    if err != nil{
+        fmt.Println("change to dir failed! ", before1)
+        err := conn.MakeDir(before1)
+        if err != nil{
+            fmt.Println("mkdir dir failed! ", before1)
+            panic(errors.New("switch to dir failed!"))
+        }
+    }
+    err = conn.ChangeDir(before1)
+    if err != nil{
+        fmt.Println("change to dir failed! ", before1)
+        panic(errors.New("switch to dir failed!"))
+    }
+    //如果长度是2则推出
+    if len(afterStr) == 1{
+        return nil
+    }
+    switchDir(conn, before1, strings.Join(afterStr[1:],"\\"))
+    return nil
 }

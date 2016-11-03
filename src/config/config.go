@@ -12,7 +12,7 @@ var ConfigMap map[string]string
 
 
 func init(){
-    ConfigMap = make(map[string]string)
+    ConfigMap = make(map[string]string, 100000)
 }
 
 func InitConfig(configPath string) error{
@@ -40,7 +40,7 @@ func configParser(row string) error{
     str := strings.TrimSpace(row)
     //判断是否是#开头
     if strings.HasPrefix(str, "#"){
-        fmt.Println("not context:", str)
+        //fmt.Println("not context:", str)
         return nil
     }
     // 去掉#之后的内容

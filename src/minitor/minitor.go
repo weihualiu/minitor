@@ -9,6 +9,7 @@ import(
 
 
 func main(){
+    fmt.Println("*************created by liu.weihua  ver:1.0**************")
     fmt.Println("minitor starting")
     configPath := "minitor.conf"
     if len(os.Args) == 2{
